@@ -1,15 +1,11 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { parse } from 'node-html-parser'
-import { minify } from 'html-minifier-terser'
+import { startPageCrawler } from '../_actions/crawlerActions'
+import { MinifHtml } from '../_helper/htmlHepler'
+import { CrawlerReq, CrawlerRes } from '../_helper/ScraperTypes';
 
 
-export type CrawlerReq = {
-    requestURl: string
-}
-export type CrawlerRes = {
-    id: string
-}
+
 export async function POST(req: Request) {
     try {
         const body: CrawlerReq = await req.json();
@@ -18,6 +14,7 @@ export async function POST(req: Request) {
         const crawlerResponse = await startPageCrawler(requestURl)
 
         crawlerResponse.body = await MinifHtml(crawlerResponse.body);
+        
         const entity = await db.crawlBaseModel.upsert({
             where: { url: requestURl },
             update: {
@@ -38,44 +35,7 @@ export async function POST(req: Request) {
         })
     } catch (error) {
         console.error('Error updating database:', error)
-        return new NextResponse('Error updating user in database', { status: 500 })
+        return new NextResponse('Error', { status: 500 })
     }
 }
 
-
-const startPageCrawler = async (requestURl: string) => {
-    const url = encodeURIComponent(requestURl);
-
-    const response = await fetch(getCrawlerBaseURL(url), {
-        method: 'GET',
-    });
-    return await response.json()
-}
-
-const getCrawlerBaseURL = (requestURl: string): string => `${process.env.CRAWLBASE_URL_BASE}/?token=${process.env.CRAWLBASE_JS_API_KEY}&format=json&pretty=true&url=${requestURl}`
-
-const MinifHtml = async (html: string) => {
-    const cleanedHTML = cleanHTML(html);
-    const minifiedHTML = await minify(cleanedHTML, {
-        collapseWhitespace: true,
-        removeComments: true,
-        removeRedundantAttributes: true,
-        removeEmptyAttributes: true,
-        minifyCSS: true,
-        minifyJS: true
-    });
-
-    return minifiedHTML;
-}
-
-const cleanHTML = (html: string) => {
-    const root = parse(html);
-
-    // Remove all <link> elements with rel="preload"
-    root.querySelectorAll('link[rel="preload"]').forEach(link => link.remove());
-
-    // Remove all <script> elements
-    root.querySelectorAll('script').forEach(script => script.remove());
-
-    return root.toString();
-}
